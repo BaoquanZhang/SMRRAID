@@ -1,0 +1,42 @@
+reset 
+set terminal postscript eps color enhanced dashed size 5,2
+set xlabel 'time (s)'
+set ylabel 'latencies (s)'
+#set yrang [0:8000]
+set output 'i10e50.eps'
+set multiplot
+#== large plot ===
+plot '30G_noctl.txt' using ($1/1000/1000):($7/1000/1000) with linespoints lc 1 pt 5 pi 5000 title "80% no control",\
+'30G_i10_e50.txt' using ($1/1000/1000):($7/1000/1000) with linespoints lc 1 pt 6 pi 5000 title "80% HARD",\
+'30G_6w4r_noctl.txt' using ($1/1000/1000):($7/1000/1000) with linespoints lc 2 pt 5 pi 5000 title "60% no control",\
+'30G_6w4r_i10e50.txt' using ($1/1000/1000):($7/1000/1000) with linespoints lc 2 pt 6 pi 5000 title "60% HARD",\
+'30G_1w2r_noctl.txt' using ($1/1000/1000):($7/1000/1000) with linespoints lc 3 pt 5 pi 5000 title "33% no control",\
+'30G_1w2r_i10e50.txt' using ($1/1000/1000):($7/1000/1000) with linespoints lc 3 pt 6 pi 5000 title "33% HARD",\
+'30G_1w3r_noctl.txt' using ($1/1000/1000):($7/1000/1000) with linespoints lc 4 pt 5 pi 5000 title "25% no control",\
+'30G_1w3r_i10e50.txt' using ($1/1000/1000):($7/1000/1000) with linespoints lc 4 pt 6 pi 5000 title "25% HARD",\
+'30G_1w9r_noctl.txt' using ($1/1000/1000):($7/1000/1000) with linespoints lc 5 pt 5 pi 5000 title "10% no control",\
+'30G_1w9r_i10e50.txt' using ($1/1000/1000):($7/1000/1000) with linespoints lc 5 pt 6 pi 5000 title "10% HARD"
+
+#== small plot ===
+#set origin 0.3,0.62
+#set size 0.23,0.3
+#unset xlabel
+#unset ylabel
+#set key title "33% HARD"
+#set xtics 1000
+#set ytics 40
+#set xrange [11900:13000]
+#set yrange [0:40]
+#plot '30G_1w2r_i20e10.txt' using ($1/1000/1000):($7/1000/1000) with linespoints lc 3 pt 6 pi 5000 notitle
+
+#== small plot ===
+#set origin 0.5,0.62
+#set size 0.23,0.3
+#unset xlabel
+#unset ylabel
+#set key title "25% HARD"
+#set xtics 2000
+#set ytics 40
+#set xrange [11900:14100]
+#set yrange [0:40]
+#plot '30G_1w3r_i20e10.txt' using ($1/1000/1000):($7/1000/1000) with linespoints lc 4 pt 6 pi 5000 notitle
