@@ -1,6 +1,5 @@
 #include "replay.h"
 
-//#define __B_Zhang__
 #define DEBUG 1
 
 
@@ -8,10 +7,6 @@ void main(int argc, char *argv[])
 {
 	replay(argv[1]);
 }
-//int main()
-//{
-//    replay("config/config.ini");
-//}
 
 void replay(char *configName)
 {
@@ -39,10 +34,6 @@ void replay(char *configName)
 	trace_read(config,trace);
 	printf("starting replay IO trace %s----\n",config->traceFileName);
 
-	//queue_print(trace);
-	//printf("trace->inNum=%d\n",trace->inNum);
-	//printf("trace->outNum=%d\n",trace->outNum);
-	//printf("trace->latencySum=%lld\n",trace->latencySum);
         if (DEBUG == 1) {
                 printf("Devices:\n");
                 j=0;
@@ -50,7 +41,6 @@ void replay(char *configName)
                         printf("%s\n", config->device[j]);
                         j++;
                 }
-                //return;
         }
         for (j = 0; j < config->diskNum; j++) {
                 fd[j] = open(config->device[j], O_DIRECT | O_SYNC | O_RDWR); 
@@ -61,58 +51,51 @@ void replay(char *configName)
                 }
         }
 	
-	if (posix_memalign((void**)&buf, MEM_ALIGN, LARGEST_REQUEST_SIZE * BYTE_PER_BLOCK))
-	{
+	if (posix_memalign((void**)&buf, MEM_ALIGN, LARGEST_REQUEST_SIZE * BYTE_PER_BLOCK)) {
 		fprintf(stderr, "Error allocating buffer\n");
 		return;
 	}
-	for(i=0;i<LARGEST_REQUEST_SIZE*BYTE_PER_BLOCK;i++)
-	{
+	for(i=0; i<LARGEST_REQUEST_SIZE*BYTE_PER_BLOCK; i++) {
 		//Generate random alphabets to write to file
-		buf[i]=(char)(rand()%26+65);
+		buf[i] = (char)(rand()%26+65);
 	}
 
 	init_aio();
 
-	initTime=time_now();
-        execTime=0;
+	initTime = time_now();
+        execTime = 0;
 	//printf("initTime=%lld\n",initTime);
-	while(trace->front)
-	{
-        
+	while (trace->front) {
                 /* Initiate a sub request statck */
                 memset(subtrace,0, sizeof(struct trace_info));
-		
                 queue_pop(1, trace, req);
-		reqTime=req->time;
-		nowTime=time_elapsed(initTime);
-#ifdef  __B_Zhang__
+		reqTime = req->time;
+		nowTime = time_elapsed(initTime);
+#ifdef  __REPLAY_SLEEP__
                 if(nowTime-execTime > config->exec * 1000000)
                 {
                         sleep(config->idle);
-                        execTime=time_elapsed(initTime);
+                        execTime = time_elapsed(initTime);
                 }
 #endif
 
-		nowTime=time_elapsed(initTime);
-		while(nowTime < reqTime)
-		{
+		nowTime = time_elapsed(initTime);
+		while (nowTime < reqTime) {
 			//usleep(waitTime);
-			nowTime=time_elapsed(initTime);
+			nowTime = time_elapsed(initTime);
 		}
-		req->waitTime=nowTime-reqTime;
+		req->waitTime = nowTime-reqTime;
                 //printf("wait time =%lld us\n",waitTime);
                 split_req(req, config->diskNum, subtrace);
-                
+
                 if (DEBUG)
                         queue_print(subtrace);
                 
                 submit_trace(fd, buf, subtrace, trace, initTime);
 	}
 
-        i=0;
-	while(trace->inNum > trace->outNum)
-	{
+        i = 0;
+	while (trace->inNum > trace->outNum) {
 		printf("trace->inNum=%d\n",trace->inNum);
 		printf("trace->outNum=%d\n",trace->outNum);
 		printf("begin sleepping 1 second------\n");
@@ -135,9 +118,9 @@ static void handle_aio(sigval_t sigval)
         struct req_info *parent;
         struct req_info *sub_req;
 
-	cb=(struct aiocb_info *)sigval.sival_ptr;
-	latency_submit=time_elapsed(cb->beginTime_submit);
-	latency_issue=time_elapsed(cb->beginTime_issue);
+	cb = (struct aiocb_info *)sigval.sival_ptr;
+	latency_submit = time_elapsed(cb->beginTime_submit);
+	latency_issue = time_elapsed(cb->beginTime_issue);
 	//cb->trace->latencySum+=latency;
 
         sub_req = cb->req;
@@ -149,22 +132,17 @@ static void handle_aio(sigval_t sigval)
         sub_req->slat = latency_submit;
         sub_req->lat = latency_issue;
 
-	error=aio_error(cb->aiocb);
-	if(error)
-	{
-		if(error != ECANCELED)
-		{
+	error = aio_error(cb->aiocb);
+	if (error) {
+		if (error != ECANCELED) {
 			fprintf(stderr,"Error completing i/o:%d\n",error);
-		}
-		else
-		{
+		} else {
 			printf("---ECANCELED error\n");
 		}
 		return;
 	}
-	count=aio_return(cb->aiocb);
-	if(count<(int)cb->aiocb->aio_nbytes)
-	{
+	count = aio_return(cb->aiocb);
+	if (count < (int)cb->aiocb->aio_nbytes) {
 		fprintf(stderr, "Warning I/O completed:%db but requested:%ldb\n",
 			count,cb->aiocb->aio_nbytes);
 	}
@@ -174,7 +152,6 @@ static void handle_aio(sigval_t sigval)
                         parent->lat = sub_req->lat;
                         parent->slat = sub_req->slat;
                 }
-
                 parent->waitChild -= 1;
                 if (DEBUG) {
                         printf("Has parent! Parent %d is waiting %d child.\n", 
@@ -218,15 +195,15 @@ static void submit_aio(int fd, void *buf, struct req_info *req,struct trace_info
 {
 	struct aiocb_info *cb;
 	char *buf_new;
-	int error=0;
+	int error = 0;
 	//struct sigaction *sig_act;
 
-	cb=(struct aiocb_info *)malloc(sizeof(struct aiocb_info));
-	memset(cb,0,sizeof(struct aiocb_info));//where to free this?
-	cb->aiocb=(struct aiocb *)malloc(sizeof(struct aiocb));
-	memset(cb->aiocb,0,sizeof(struct aiocb));//where to free this?
+	cb = (struct aiocb_info *)malloc(sizeof(struct aiocb_info));
+	memset(cb, 0, sizeof(struct aiocb_info));//where to free this?
+	cb->aiocb = (struct aiocb *)malloc(sizeof(struct aiocb));
+	memset(cb->aiocb, 0, sizeof(struct aiocb));//where to free this?
 	cb->req=(struct req_info *)malloc(sizeof(struct req_info));
-	memset(cb->req,0,sizeof(struct req_info));
+	memset(cb->req, 0, sizeof(struct req_info));
 
 	cb->aiocb->aio_fildes = fd;
 	cb->aiocb->aio_nbytes = req->size;
@@ -238,50 +215,31 @@ static void submit_aio(int fd, void *buf, struct req_info *req,struct trace_info
 	cb->aiocb->aio_sigevent.sigev_notify_attributes = NULL;
 	cb->aiocb->aio_sigevent.sigev_value.sival_ptr = cb;
 
-	//error=sigaction(SIGIO,sig_act,NULL);
-	//write and read different buffer
-	if(USE_GLOBAL_BUFF != 1)
-	{
-		if (posix_memalign((void**)&buf_new, MEM_ALIGN, req->size + 1)) 
-		{
+	/* error=sigaction(SIGIO,sig_act,NULL);
+	 * write and read different buffer
+         */
+	if (USE_GLOBAL_BUFF != 1) {
+		if (posix_memalign((void**)&buf_new, MEM_ALIGN, req->size + 1)) {
 			fprintf(stderr, "Error allocating buffer\n");
 		}
 		cb->aiocb->aio_buf = buf_new;
-	}
-	else
-	{
+	} else {
 		cb->aiocb->aio_buf = buf;
 	}
 
-	//cb->req=req;	//WTF
         copy_req(req, cb->req);
-	//cb->req->time=req->time;
-	//cb->req->lba=req->lba;
-	//cb->req->size=req->size;
-	//cb->req->type=req->type;
-        //cb->req->waitTime=req->waitTime;
 
-	/********************************/
-        cb->beginTime_submit=time_now();// latency from the req was submitted
-        cb->beginTime_issue=req->time+initTime; //latency from the req was issued 
-        /********************************/
+        cb->beginTime_submit = time_now();// latency from the req was submitted
+        cb->beginTime_issue = req->time+initTime; //latency from the req was issued 
 	
         cb->trace=trace;
         
-        //printf("submit_aio: dev %d, size %d, LBA %d\n", 
-        //                fd, cb->aiocb->aio_nbytes, cb->aiocb->aio_offset);
-
-	if(req->type==1)
-	{
-		error=aio_write(cb->aiocb);
-	}
-	else //if(req->type==0)
-	{
-		error=aio_read(cb->aiocb);
-	}
-	//while(aio_error(cb->aiocb)==EINPROGRESS);
-	if(error)
-	{
+	if (req->type == 1)
+		error = aio_write(cb->aiocb);
+	else
+		error = aio_read(cb->aiocb);
+	
+        if (error) {
                 fprintf(stderr, "Error performing i/o");
 		exit(-1);
 	}
@@ -306,55 +264,41 @@ void config_read(struct config_info *config,const char *filename)
 	FILE *configFile;
         int diskid;
 	
-	configFile=fopen(filename,"r");
-	if(configFile == NULL)
-	{
+	configFile = fopen(filename,"r");
+	if(configFile == NULL) {
 		printf("error: opening config file\n");
 		exit(-1);
 	}
-	//read config file
-	memset(line,0,sizeof(char)*BUFSIZE);
+	/* read config file */
+	memset(line, 0, sizeof(char)*BUFSIZE);
         diskid = 0;
-	while(fgets(line,sizeof(line),configFile))
-	{
-		if(line[0] == '#'||line[0] == ' ') 
-		{
+	while (fgets(line, sizeof(line), configFile)) {
+		if(line[0] == '#'||line[0] == ' ') {
 			continue;
 		}
-                ptr=strchr(line,'=');
-                if(!ptr)
-		{
+                ptr = strchr(line, '=');
+                if (!ptr) {
 			continue;
 		} 
-                name=ptr-line;	//the end of name string+1
-                value=name+1;	//the start of value string
-                while(line[name-1]==' ') 
-		{
+                name = ptr-line; //the end of name string+1
+                value = name+1;	 //the start of value string
+                while (line[name-1] == ' ')
 			name--;
-		}
-                line[name]=0;
 
-		if(strcmp(line,"device")==0 && diskid < 10)
-		{
-			sscanf(line+value,"%s",config->device[diskid++]);
-		}
-		else if(strcmp(line,"trace")==0)
-		{
-			sscanf(line+value,"%s",config->traceFileName);
-		}
-		else if(strcmp(line,"log")==0)
-		{
-			sscanf(line+value,"%s",config->logFileName);
-		}
-		else if(strcmp(line,"exectime")==0)
-		{
-			sscanf(line+value,"%d",&config->exec);
-		}
-		else if(strcmp(line,"idletime")==0)
-		{
-			sscanf(line+value,"%d",&config->idle);
-		}
-		memset(line,0,sizeof(char)*BUFSIZE);
+                line[name] = 0;
+
+		if (strcmp(line, "device") == 0 && diskid < 10)
+			sscanf(line + value, "%s", config->device[diskid++]);
+		else if (strcmp(line, "trace") ==0)
+			sscanf(line + value, "%s", config->traceFileName);
+		else if (strcmp(line, "log") == 0)
+			sscanf(line + value, "%s", config->logFileName);
+		else if (strcmp(line, "exectime") == 0)
+			sscanf(line + value, "%d", &config->exec);
+		else if(strcmp(line, "idletime") == 0)
+			sscanf(line+value, "%d", &config->idle);
+
+		memset(line, 0, sizeof(char) * BUFSIZE);
 	}
         config->diskNum = diskid;
 	fclose(configFile);
@@ -366,29 +310,26 @@ void trace_read(struct config_info *config,struct trace_info *trace)
 	char line[BUFSIZE];
 	struct req_info* req;
 
-	traceFile=fopen(config->traceFileName,"r");
-	if(traceFile==NULL)
-	{
+	traceFile = fopen(config->traceFileName,"r");
+	if (traceFile == NULL) {
 		printf("error: opening trace file\n");
 		exit(-1);
 	}
 	//initialize trace file parameters
-	trace->inNum=0;
-	trace->outNum=0;
-	trace->latencySum=0;
-	trace->logFile=fopen(config->logFileName,"w");
+	trace->inNum = 0;
+	trace->outNum = 0;
+	trace->latencySum = 0;
+	trace->logFile = fopen(config->logFileName, "w");
         
-        req=(struct req_info *)malloc(sizeof(struct req_info));
+        req = (struct req_info *)malloc(sizeof(struct req_info));
 
-	while(fgets(line,sizeof(line),traceFile))
-	{
-		if(strlen(line)==2)
-		{
+	while (fgets(line, sizeof(line), traceFile)) {
+		if (strlen(line) == 2)
 			continue;
-		}
 		trace->inNum++;	//track the process of IO requests
                 //time:ms, lba:sectors, size:sectors, type:1<->write 0<-->read
-		sscanf(line,"%lf %lld %d %d",&req->time,&req->lba,&req->size,&req->type);
+		sscanf(line, "%lf %lld %d %d", 
+                                &req->time, &req->lba, &req->size, &req->type);
 		//push into request queue
 		req->time = req->time * 1000;	//ms-->us
 		req->size = req->size * BYTE_PER_BLOCK;
@@ -409,13 +350,13 @@ void trace_read(struct config_info *config,struct trace_info *trace)
 long long time_now()
 {
 	struct timeval now;
-	gettimeofday(&now,NULL);
-	return 1000000*now.tv_sec+now.tv_usec;	//us
+	gettimeofday(&now, NULL);
+	return 1000000 * now.tv_sec + now.tv_usec;	//us
 }
 
 long long time_elapsed(long long begin)
 {
-	return time_now()-begin;	//us
+	return time_now() - begin;	//us
 }
 
 
@@ -647,13 +588,12 @@ void queue_print(struct trace_info *trace)
 {
 	struct req_info* tmp = trace->front;
         printf("request info: timestamp, lba, size, type, diskid \n");
-	while(tmp) 
-	{
-		printf("%lf ",tmp->time);
-		printf("%lld ",tmp->lba);
-		printf("%d ",tmp->size);
-		printf("%d ",tmp->type);
-		printf("%d\n",tmp->diskid);
+	while (tmp) {
+		printf("%lf ", tmp->time);
+		printf("%lld ", tmp->lba);
+		printf("%d ", tmp->size);
+		printf("%d ", tmp->type);
+		printf("%d\n", tmp->diskid);
 		tmp = tmp->next;
 	}
 }
