@@ -13,33 +13,36 @@
 #include <linux/fs.h>
 #include <errno.h>
 #include <pthread.h>
-//#include <signal.h>
-//#include <sys/types.h>
-//#include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+
 
 #define SUCCESS 1
 #define FAILURE 0
 #define BUFSIZE	300
 #define RAMSIZE 60 //MB
 
-#define MEM_ALIGN		        512  // Memory alignment
-#define USE_GLOBAL_BUFF		    0 
-#define AIO_THREAD_POOL_SIZE    50
+#define MEM_ALIGN 512  // Memory alignment
+#define USE_GLOBAL_BUFF 0 
+#define AIO_THREAD_POOL_SIZE 50
 
-#define BYTE_PER_BLOCK		    512     //blk size (bits) 
-#define LARGEST_REQUEST_SIZE	1024 * 2 * 3  //1MB Largest request size (blks)
-#define BLOCK_PER_DRIVE		    (long long)8*1024*1024*1024*2	//8TB Drive capacity (blks)
+#define BYTE_PER_BLOCK 512     //blk size (bits) 
+#define LARGEST_REQUEST_SIZE 1024 * 2 * 3  //1MB Largest request size (blks)
+#define BLOCK_PER_DRIVE (long long)8*1024*1024*1024*2	//8TB Drive capacity (blks)
 
 #define CHUNK_SIZE 512 //raid: chunk size kb
 #define MAX_DISKS 10
+
+/* macros for stripe state table */
+#define SHARED_KEY 5678 /* size of stripe state table (MB) */
 
 struct config_info {
 	char device[10][64];
 	char traceFileName[64];
 	char logFileName[64];
-        unsigned int exec;
         unsigned int idle;
         unsigned int diskNum;
+        unsigned int idle_device;
 };
 
 struct req_info {
@@ -76,7 +79,7 @@ struct aiocb_info {
 };
 
 //replay.c
-void replay(char *configName);
+void replay(int *fd, struct config_info *config, struct trace_info *trace, struct req_info *req);
 void config_read(struct config_info *config,const char *filename);
 void trace_read(struct config_info *config,struct trace_info *trace);
 long long time_now();
@@ -88,11 +91,15 @@ static void init_aio();
 void split_req(struct req_info *parent, int diskNum, struct trace_info *subtrace);
 void preread(int *op, struct req_info *parent, unsigned long long lba, int diskNum, struct trace_info *subtrace);
 int submit_trace(int *fd, void *buf, struct trace_info *subtrace, struct trace_info *trace, long long initTime);
-
+void rotate_device(struct config_info *config, pid_t child_pid);
 //trace queue ops
 void queue_push(struct trace_info *trace, struct req_info *req);
 void queue_pop(int from_head, struct trace_info *trace, struct req_info *req);
 void queue_print(struct trace_info *trace);
 void copy_req(struct req_info *src, struct req_info *des);
+
+//mutex for shared data
+pthread_mutex_t mutex;
+void init_mutex();
 
 #endif

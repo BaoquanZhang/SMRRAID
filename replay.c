@@ -5,21 +5,17 @@
 
 void main(int argc, char *argv[])
 {
-	replay(argv[1]);
-}
+	int fd[10], j;
+        struct config_info *config;
+        struct trace_info *trace;
+        struct req_info *req;
+        char *configName = argv[1];
+        key_t key;
+        int *shm, diskset;
+        pid_t pid;
 
-void replay(char *configName)
-{
-	struct config_info *config;
-	struct trace_info *trace;
-	struct req_info *req;
-	int fd[10];
-	char *buf;
-	int i,j;
-	long long initTime,nowTime,reqTime,waitTime;
-        long long execTime;//for bzhang's experiment
-        struct trace_info *subtrace;
-	
+        init_mutex();
+
 	config=(struct config_info *)malloc(sizeof(struct config_info));
 	memset(config,0,sizeof(struct config_info));
 	trace=(struct trace_info *)malloc(sizeof(struct trace_info));
@@ -27,12 +23,74 @@ void replay(char *configName)
 	req=(struct req_info *)malloc(sizeof(struct req_info));
 	memset(req,0,sizeof(struct req_info));
 
-        subtrace = (struct trace_info *) malloc(sizeof(struct trace_info));
-
-	config_read(config,configName);
+	config_read(config, configName);
 	printf("starting warm up with config %s----\n",configName);
 	trace_read(config,trace);
 	printf("starting replay IO trace %s----\n",config->traceFileName);
+        
+        for (j = 0; j < config->diskNum; j++) {
+                fd[j] = open(config->device[j], O_DIRECT | O_SYNC | O_RDWR); 
+                if (fd[j] < 0) {
+                        fprintf(stderr, "Value of errno: %d\n", errno);
+                        printf("Cannot open %d\n", j);
+                        exit(-1);
+                }
+        }
+        
+        /* Now create two process:
+         * Parent: change the idle disk periodically 
+         * Child: replay trace in RAID fashion
+         * */
+        pid = fork();
+        
+        if (pid == 0) 
+                /* child process */
+                replay(fd, config, trace, req);
+        else 
+                /* parent process */
+                rotate_device(config, pid);
+}
+
+void init_mutex()
+{
+        pthread_mutexattr_t attr;
+        pthread_mutexattr_init(&attr);
+        pthread_mutexattr_setpshared(&attr, PTHREAD_PROCESS_SHARED);
+        pthread_mutex_init(&mutex, &attr);
+}
+void rotate_device(struct config_info *config, pid_t child_pid)
+{
+        int itval = config->idle;
+        int current_idle = config->idle_device;
+        int status;
+        pid_t res;
+
+        while (1) {
+                sleep(itval);
+                current_idle += 1;
+                current_idle %= config->diskNum;
+                pthread_mutex_lock(&mutex);
+                config->idle_device = current_idle;
+                pthread_mutex_unlock(&mutex);
+                printf("idle device changed! Now it is %d\n", config->idle_device);
+                res = waitpid(child_pid, &status, WNOHANG);
+                if (res == 0)
+                        continue;
+                else if (res == -1)
+                        printf("Child process error!\n");
+                else
+                        break;
+        }
+}
+
+void replay(int *fd, struct config_info *config, struct trace_info *trace, struct req_info *req)
+{
+	char *buf;
+	int i,j;
+	long long initTime,nowTime,reqTime,waitTime;
+        struct trace_info *subtrace;
+	
+        subtrace = (struct trace_info *) malloc(sizeof(struct trace_info));
 
         if (DEBUG == 1) {
                 printf("Devices:\n");
@@ -42,19 +100,12 @@ void replay(char *configName)
                         j++;
                 }
         }
-        for (j = 0; j < config->diskNum; j++) {
-                fd[j] = open(config->device[j], O_DIRECT | O_SYNC | O_RDWR); 
-                if (fd[j] < 0) {
-                        fprintf(stderr, "Value of errno: %d\n", errno);
-                        printf("Cannot open %d\n", j);
-                        exit(-1);
-                }
-        }
-	
+
 	if (posix_memalign((void**)&buf, MEM_ALIGN, LARGEST_REQUEST_SIZE * BYTE_PER_BLOCK)) {
 		fprintf(stderr, "Error allocating buffer\n");
 		return;
 	}
+
 	for(i=0; i<LARGEST_REQUEST_SIZE*BYTE_PER_BLOCK; i++) {
 		//Generate random alphabets to write to file
 		buf[i] = (char)(rand()%26+65);
@@ -63,29 +114,16 @@ void replay(char *configName)
 	init_aio();
 
 	initTime = time_now();
-        execTime = 0;
-	//printf("initTime=%lld\n",initTime);
 	while (trace->front) {
                 /* Initiate a sub request statck */
                 memset(subtrace,0, sizeof(struct trace_info));
                 queue_pop(1, trace, req);
 		reqTime = req->time;
 		nowTime = time_elapsed(initTime);
-#ifdef  __REPLAY_SLEEP__
-                if(nowTime-execTime > config->exec * 1000000)
-                {
-                        sleep(config->idle);
-                        execTime = time_elapsed(initTime);
-                }
-#endif
-
-		nowTime = time_elapsed(initTime);
 		while (nowTime < reqTime) {
-			//usleep(waitTime);
 			nowTime = time_elapsed(initTime);
 		}
 		req->waitTime = nowTime-reqTime;
-                //printf("wait time =%lld us\n",waitTime);
                 split_req(req, config->diskNum, subtrace);
 
                 if (DEBUG)
@@ -94,14 +132,12 @@ void replay(char *configName)
                 submit_trace(fd, buf, subtrace, trace, initTime);
 	}
 
-        i = 0;
 	while (trace->inNum > trace->outNum) {
 		printf("trace->inNum=%d\n",trace->inNum);
 		printf("trace->outNum=%d\n",trace->outNum);
 		printf("begin sleepping 1 second------\n");
 		sleep(1);
 	}
-	//printf("average latency= %Lf\n",(long double)trace->latencySum/(long double)trace->inNum);
 	free(buf);
 	free(config);
 	fclose(trace->logFile);
@@ -293,10 +329,10 @@ void config_read(struct config_info *config,const char *filename)
 			sscanf(line + value, "%s", config->traceFileName);
 		else if (strcmp(line, "log") == 0)
 			sscanf(line + value, "%s", config->logFileName);
-		else if (strcmp(line, "exectime") == 0)
-			sscanf(line + value, "%d", &config->exec);
 		else if(strcmp(line, "idletime") == 0)
 			sscanf(line+value, "%d", &config->idle);
+		else if(strcmp(line, "idledevice") == 0)
+			sscanf(line+value, "%d", &config->idle_device);
 
 		memset(line, 0, sizeof(char) * BUFSIZE);
 	}
