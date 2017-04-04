@@ -1,11 +1,11 @@
 #include "replay.h"
 
 #define DEBUG 1
-
+#define ROTATE 1
 
 void main(int argc, char *argv[])
 {
-	int fd[10], j;
+	int fd[10], i, j;
         struct config_info *config;
         struct trace_info *trace;
         struct req_info *req;
@@ -36,7 +36,14 @@ void main(int argc, char *argv[])
                         exit(-1);
                 }
         }
-        
+
+        if (DEBUG == 1) {
+                printf("The Whole disk sets are: ");
+                for (i = 0; i < config->diskNum; i++)
+                        printf("%d ", fd[i]);
+                printf("\n");
+        }
+
         /* Now create two process:
          * Parent: change the idle disk periodically 
          * Child: replay trace in RAID fashion
@@ -58,6 +65,7 @@ void init_mutex()
         pthread_mutexattr_setpshared(&attr, PTHREAD_PROCESS_SHARED);
         pthread_mutex_init(&mutex, &attr);
 }
+
 void rotate_device(struct config_info *config, pid_t child_pid)
 {
         int itval = config->idle;
@@ -72,7 +80,7 @@ void rotate_device(struct config_info *config, pid_t child_pid)
                 pthread_mutex_lock(&mutex);
                 config->idle_device = current_idle;
                 pthread_mutex_unlock(&mutex);
-                printf("idle device changed! Now it is %d\n", config->idle_device);
+                printf("idle device changed! Now it is disk %d\n", config->idle_device);
                 res = waitpid(child_pid, &status, WNOHANG);
                 if (res == 0)
                         continue;
@@ -89,7 +97,10 @@ void replay(int *fd, struct config_info *config, struct trace_info *trace, struc
 	int i,j;
 	long long initTime,nowTime,reqTime,waitTime;
         struct trace_info *subtrace;
-	
+        int real_fd[10];
+        int ndisks;
+	int idle_device;
+
         subtrace = (struct trace_info *) malloc(sizeof(struct trace_info));
 
         if (DEBUG == 1) {
@@ -101,14 +112,15 @@ void replay(int *fd, struct config_info *config, struct trace_info *trace, struc
                 }
         }
 
+
 	if (posix_memalign((void**)&buf, MEM_ALIGN, LARGEST_REQUEST_SIZE * BYTE_PER_BLOCK)) {
 		fprintf(stderr, "Error allocating buffer\n");
 		return;
 	}
 
-	for(i=0; i<LARGEST_REQUEST_SIZE*BYTE_PER_BLOCK; i++) {
+	for(i = 0; i < LARGEST_REQUEST_SIZE * BYTE_PER_BLOCK; i++) {
 		//Generate random alphabets to write to file
-		buf[i] = (char)(rand()%26+65);
+		buf[i] = (char)(rand() % 26 + 65);
 	}
 
 	init_aio();
@@ -116,7 +128,8 @@ void replay(int *fd, struct config_info *config, struct trace_info *trace, struc
 	initTime = time_now();
 	while (trace->front) {
                 /* Initiate a sub request statck */
-                memset(subtrace,0, sizeof(struct trace_info));
+                memset(subtrace, 0, sizeof(struct trace_info));
+                memset(real_fd, 0, sizeof(int) * 10);
                 queue_pop(1, trace, req);
 		reqTime = req->time;
 		nowTime = time_elapsed(initTime);
@@ -124,17 +137,41 @@ void replay(int *fd, struct config_info *config, struct trace_info *trace, struc
 			nowTime = time_elapsed(initTime);
 		}
 		req->waitTime = nowTime-reqTime;
-                split_req(req, config->diskNum, subtrace);
-
-                if (DEBUG)
-                        queue_print(subtrace);
                 
-                submit_trace(fd, buf, subtrace, trace, initTime);
+                if(ROTATE == 1) {
+                        ndisks = config->diskNum - 1;
+                        pthread_mutex_lock(&mutex);
+                        idle_device = config->idle_device;
+                        pthread_mutex_unlock(&mutex);
+                        
+                        j = 0;
+                        for (i = 0; i < config->diskNum; i++) {
+                                if (i == idle_device)
+                                        continue;
+                                real_fd[j++] = fd[i];
+                        }
+                } else {
+                        ndisks = config->diskNum;
+                        j = 0;
+                        for (i = 0; i < config->diskNum; i++)
+                                real_fd[j++] = fd[i];
+                }
+                
+                split_req(req, ndisks, subtrace);
+
+                if (DEBUG) {
+                        printf("The whole disk sets are: ");
+                        for(i = 0; i < ndisks; i++)
+                                printf("%d ", real_fd[i]);
+                        printf("\n");
+                        queue_print(subtrace);
+                }
+                submit_trace(real_fd, buf, subtrace, trace, initTime);
 	}
 
 	while (trace->inNum > trace->outNum) {
-		printf("trace->inNum=%d\n",trace->inNum);
-		printf("trace->outNum=%d\n",trace->outNum);
+		printf("trace->inNum=%d\n", trace->inNum);
+		printf("trace->outNum=%d\n", trace->outNum);
 		printf("begin sleepping 1 second------\n");
 		sleep(1);
 	}
