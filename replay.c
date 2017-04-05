@@ -11,7 +11,7 @@ void main(int argc, char *argv[])
         struct req_info *req;
         char *configName = argv[1];
         key_t key;
-        int *shm, diskset;
+        int *shm, shmid;
         pid_t pid;
 
         init_mutex();
@@ -44,6 +44,13 @@ void main(int argc, char *argv[])
                 printf("\n");
         }
 
+        /* create shared memory of idle device */
+        key = SHARE_KEY;
+        if ((shmid = shmget(key, sizeof(int), IPC_CREAT | 0666)) < 0) {
+                printf("creating shared mem failed");
+                exit(-1);
+        }
+
         /* Now create two process:
          * Parent: change the idle disk periodically 
          * Child: replay trace in RAID fashion
@@ -52,10 +59,10 @@ void main(int argc, char *argv[])
         
         if (pid == 0) 
                 /* child process */
-                replay(fd, config, trace, req);
+                replay(fd, config, key, trace, req);
         else 
                 /* parent process */
-                rotate_device(fd, config, pid);
+                rotate_device(config, key, pid);
 }
 
 void init_mutex()
@@ -66,21 +73,32 @@ void init_mutex()
         pthread_mutex_init(&mutex, &attr);
 }
 
-void rotate_device(int *fd, struct config_info *config, pid_t child_pid)
+void rotate_device(struct config_info *config, key_t key, pid_t child_pid)
 {
         int itval = config->idle;
         int current_idle = config->idle_device;
-        int status;
+        int status, shmid, *shm;
         pid_t res;
 
+        
+        if((shmid = shmget(key, sizeof(int), 0666)) < 0) {
+                printf("Getting shm failed\n");
+                exit(-1);
+        }
+
+        if ((shm = shmat(shmid, NULL, 0)) == (int *) -1) {
+                printf("rotating shm failed\n");
+                exit(-1);
+        }
+
         while (1) {
-                printf("Now idle device is %d\n", config->idle_device);
                 sleep(itval);
                 current_idle += 1;
                 current_idle %= config->diskNum;
                 pthread_mutex_lock(&mutex);
-                config->idle_device = fd[current_idle];
+                *shm = current_idle;
                 pthread_mutex_unlock(&mutex);
+                printf("Current idle devce = %d\n", *shm);
                 res = waitpid(child_pid, &status, WNOHANG);
                 if (res == 0)
                         continue;
@@ -91,10 +109,10 @@ void rotate_device(int *fd, struct config_info *config, pid_t child_pid)
         }
 }
 
-void replay(int *fd, struct config_info *config, struct trace_info *trace, struct req_info *req)
+void replay(int *fd, struct config_info *config, key_t key, struct trace_info *trace, struct req_info *req)
 {
 	char *buf;
-	int i,j;
+	int i,j, shmid, *shm;
 	long long initTime,nowTime,reqTime,waitTime;
         struct trace_info *subtrace;
         int real_fd[10];
@@ -125,7 +143,20 @@ void replay(int *fd, struct config_info *config, struct trace_info *trace, struc
 
 	init_aio();
 
+        memset(sst, 0, sizeof(sst));
+
 	initTime = time_now();
+
+        if((shmid = shmget(key, sizeof(int), 0666)) < 0) {
+                printf("Getting shm failed\n");
+                exit(-1);
+        }
+
+        if ((shm = shmat(shmid, NULL, 0)) == (int *) -1) {
+                printf("rotating shm failed\n");
+                exit(-1);
+        }
+
 	while (trace->front) {
                 /* Initiate a sub request statck */
                 memset(subtrace, 0, sizeof(struct trace_info));
@@ -138,20 +169,19 @@ void replay(int *fd, struct config_info *config, struct trace_info *trace, struc
 		}
 		req->waitTime = nowTime-reqTime;
                 
-                if(ROTATE == 1) {
+                if (ROTATE == 1)
                         ndisks = config->diskNum - 1;
-                        pthread_mutex_lock(&mutex);
-                        idle_device = config->idle_device;
-                        pthread_mutex_unlock(&mutex);
-                } else {
+                else
                         ndisks = config->diskNum;
-                }
                 
-                split_req(fd, sst, idle_device, req, ndisks, subtrace);
+                split_req(fd, sst, req, ndisks, subtrace);
 
                 if (ROTATE == 1) {
                         /* check if read from or write to idle device */
-                       check_trace(sst, ndisks, idle_device, fd, subtrace); 
+                        pthread_mutex_lock(&mutex);
+                        idle_device = *shm;
+                        pthread_mutex_unlock(&mutex);
+                        check_trace(sst, ndisks, idle_device, fd, subtrace); 
                 }
                 submit_trace(buf, sst, idle_device, subtrace, trace, initTime);
 	}
@@ -200,7 +230,7 @@ void check_trace(int *sst, int ndisks, int new_idle, int *fd, struct trace_info 
 {
         struct req_info *req;
         struct req_info *current;
-        int old_idle;
+        int old_idle, current_idle;
         int stripe_id;
         long chunk_size = CHUNK_SIZE * 1024;
         int i;
@@ -208,10 +238,9 @@ void check_trace(int *sst, int ndisks, int new_idle, int *fd, struct trace_info 
         current = subtrace->front;
         while(current) {
                 stripe_id = current->lba / chunk_size;
-                old_idle = sst[stripe_id];
-                if (old_idle == 0)
-                        old_idle = fd[0];
-                if (current->diskid == new_idle){
+                old_idle = fd[sst[stripe_id]];
+                printf("Writing to %d, idle is %d\n", current->diskid, fd[new_idle]);
+                if (current->diskid == fd[new_idle]) {
                         if (current->type == 1) {
                                 current->diskid = old_idle;
                         } else {
@@ -242,6 +271,7 @@ static void handle_aio(sigval_t sigval)
                 printf("returned: %d, %lld, %d\n", 
                                 sub_req->diskid, sub_req->lba, sub_req->size);
         }
+
         parent = sub_req->parent;
         sub_req->slat = latency_submit;
         sub_req->lat = latency_issue;
@@ -255,6 +285,7 @@ static void handle_aio(sigval_t sigval)
 		}
 		return;
 	}
+
 	count = aio_return(cb->aiocb);
 	if (count < (int)cb->aiocb->aio_nbytes) {
 		fprintf(stderr, "Warning I/O completed:%db but requested:%ldb\n",
@@ -310,6 +341,7 @@ int submit_trace(void *buf, int *sst, int new_idle, struct trace_info *subtrace,
         free(req);
         return 0;
 }
+
 static void submit_aio(int fd, void *buf, struct req_info *req,struct trace_info *trace,long long initTime)
 {
 	struct aiocb_info *cb;
@@ -542,7 +574,7 @@ void preread(int *real_fd, int mode, int *op, struct req_info *parent, unsigned 
         free(tmp);
 }
 
-void split_req(int *fd, int *sst, int idle_device, struct req_info *req, int diskNum, struct trace_info *subtrace)
+void split_req(int *fd, int *sst, struct req_info *req, int diskNum, struct trace_info *subtrace)
 {
         unsigned int chunk_size = CHUNK_SIZE * 1024;
         unsigned int stripe_size = chunk_size * (diskNum - 1);
@@ -606,15 +638,24 @@ void split_req(int *fd, int *sst, int idle_device, struct req_info *req, int dis
                         
                         stripe_id = slice / stripe_size;
                         parity_id = stripe_id % diskNum;
-                        lba = (long long) (stripe_id * stripe_size) + chunk_offset;
+                        lba = (long long) (stripe_id * chunk_size) + chunk_offset;
 
                         /* check originl disk sets for the stripe */
                         j = 0;
                         old_idle = sst[stripe_id];
+
+                        printf("old idle device: %d\n", old_idle);
+                        
+                        printf("spliting: old disk set: ");
                         for (i = 0; i < diskNum + 1; i++) {
-                                if (fd[i] != old_idle)
-                                        real_fd[j++] = fd[i];
+                                if (i != old_idle) {
+                                        real_fd[j] = fd[i];
+                                        printf("%d ", real_fd[j]);
+                                        j++;
+                                }
                         }
+                        printf("\n");
+
                         
                         if (DEBUG) {
                                 printf("stripe id = %ld\n", stripe_id);
@@ -647,6 +688,7 @@ void split_req(int *fd, int *sst, int idle_device, struct req_info *req, int dis
                 }
 
                 sub_req->time = parent->time;
+                sub_req->diskid = real_fd[disk_id];
                 sub_req->lba = lba;
                 sub_req->size = len;
                 sub_req->type = parent->type;

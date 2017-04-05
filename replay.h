@@ -15,6 +15,8 @@
 #include <pthread.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <sys/ipc.h>
+#include <sys/shm.h>
 
 
 #define SUCCESS 1
@@ -35,6 +37,9 @@
 
 /* macros for stripe state table */
 #define SST_SIZE 1000000 /* size of stripe state table */
+
+/* For shared memory */
+#define SHARE_KEY 5678
 
 struct config_info {
 	char device[10][64];
@@ -79,7 +84,7 @@ struct aiocb_info {
 };
 
 //replay.c
-void replay(int *fd, struct config_info *config, struct trace_info *trace, struct req_info *req);
+void replay(int *fd, struct config_info *config, key_t key, struct trace_info *trace, struct req_info *req);
 void config_read(struct config_info *config,const char *filename);
 void trace_read(struct config_info *config,struct trace_info *trace);
 long long time_now();
@@ -88,11 +93,11 @@ static void handle_aio(sigval_t sigval);
 static void submit_aio(int fd, void *buf, struct req_info *req, struct trace_info *trace, long long initTime);
 static void init_aio();
 //raid ops
-void split_req(int *fd, int *sst, int idle_device, struct req_info *parent, int diskNum, struct trace_info *subtrace);
+void split_req(int *fd, int *sst, struct req_info *parent, int diskNum, struct trace_info *subtrace);
 void preread(int *real_fd, int mode, int *op, struct req_info *parent, 
                 unsigned long long lba, int diskNum, struct trace_info *subtrace);
-int submit_trace(void *buf, int *sst, int new_idle, struct trace_info *subtrace, struct trace_info *trace, long long initTime);
-void rotate_device(int *fd, struct config_info *config, pid_t child_pid);
+int submit_trace(void *buf, int *sst, int idle_device, struct trace_info *subtrace, struct trace_info *trace, long long initTime);
+void rotate_device(struct config_info *config, key_t key, pid_t child_pid);
 int check_mode(int *op, int diskNum);
 void check_trace(int *sst, int ndisks, int new_idle, int *fd, struct trace_info *subtrace);
 //trace queue ops
