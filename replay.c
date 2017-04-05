@@ -55,7 +55,7 @@ void main(int argc, char *argv[])
                 replay(fd, config, trace, req);
         else 
                 /* parent process */
-                rotate_device(config, pid);
+                rotate_device(fd, config, pid);
 }
 
 void init_mutex()
@@ -66,7 +66,7 @@ void init_mutex()
         pthread_mutex_init(&mutex, &attr);
 }
 
-void rotate_device(struct config_info *config, pid_t child_pid)
+void rotate_device(int *fd, struct config_info *config, pid_t child_pid)
 {
         int itval = config->idle;
         int current_idle = config->idle_device;
@@ -74,13 +74,13 @@ void rotate_device(struct config_info *config, pid_t child_pid)
         pid_t res;
 
         while (1) {
+                printf("Now idle device is %d\n", config->idle_device);
                 sleep(itval);
                 current_idle += 1;
                 current_idle %= config->diskNum;
                 pthread_mutex_lock(&mutex);
-                config->idle_device = current_idle;
+                config->idle_device = fd[current_idle];
                 pthread_mutex_unlock(&mutex);
-                printf("idle device changed! Now it is disk %d\n", config->idle_device);
                 res = waitpid(child_pid, &status, WNOHANG);
                 if (res == 0)
                         continue;
@@ -113,7 +113,6 @@ void replay(int *fd, struct config_info *config, struct trace_info *trace, struc
                 }
         }
 
-
 	if (posix_memalign((void**)&buf, MEM_ALIGN, LARGEST_REQUEST_SIZE * BYTE_PER_BLOCK)) {
 		fprintf(stderr, "Error allocating buffer\n");
 		return;
@@ -144,30 +143,17 @@ void replay(int *fd, struct config_info *config, struct trace_info *trace, struc
                         pthread_mutex_lock(&mutex);
                         idle_device = config->idle_device;
                         pthread_mutex_unlock(&mutex);
-                        
-                        j = 0;
-                        for (i = 0; i < config->diskNum; i++) {
-                                if (i == idle_device)
-                                        continue;
-                                real_fd[j++] = fd[i];
-                        }
                 } else {
                         ndisks = config->diskNum;
-                        j = 0;
-                        for (i = 0; i < config->diskNum; i++)
-                                real_fd[j++] = fd[i];
                 }
                 
-                split_req(sst, idle_device, req, ndisks, subtrace);
+                split_req(fd, sst, idle_device, req, ndisks, subtrace);
 
-                if (DEBUG) {
-                        printf("The whole disk sets are: ");
-                        for(i = 0; i < ndisks; i++)
-                                printf("%d ", real_fd[i]);
-                        printf("\n");
-                        queue_print(subtrace);
+                if (ROTATE == 1) {
+                        /* check if read from or write to idle device */
+                       check_trace(sst, ndisks, idle_device, fd, subtrace); 
                 }
-                submit_trace(real_fd, buf, subtrace, trace, initTime);
+                submit_trace(buf, sst, idle_device, subtrace, trace, initTime);
 	}
 
 	while (trace->inNum > trace->outNum) {
@@ -182,6 +168,59 @@ void replay(int *fd, struct config_info *config, struct trace_info *trace, struc
 	fclose(trace->logFile);
 	free(trace);
 	free(req);
+}
+
+void modify_read(int ndisks, int *fd, int new_idle, int old_idle, struct req_info * current,
+                struct trace_info *subtrace)
+{
+        int i;
+        int add = 0;
+        struct req_info *req;
+
+        req = (struct req_info *)malloc(sizeof(struct req_info));
+        for (i = 0; i < ndisks; i++){
+                if (fd[i] != new_idle && fd[i] != old_idle) {
+                        if (add == 0) {
+                                current->diskid = fd[i];
+                        } else {
+                               copy_req(current, req);
+                               req->diskid = fd[i];
+                               queue_push(subtrace, req);
+                        }
+                }
+        }
+        free(req);
+}
+/* check_trace: check if current sub requests will read/write idle device
+ *              if write to idle device, redirect it to another device;
+ *              if read from idle device, read other device instead also
+ * */
+
+void check_trace(int *sst, int ndisks, int new_idle, int *fd, struct trace_info *subtrace)
+{
+        struct req_info *req;
+        struct req_info *current;
+        int old_idle;
+        int stripe_id;
+        long chunk_size = CHUNK_SIZE * 1024;
+        int i;
+
+        current = subtrace->front;
+        while(current) {
+                stripe_id = current->lba / chunk_size;
+                old_idle = sst[stripe_id];
+                if (old_idle == 0)
+                        old_idle = fd[0];
+                if (current->diskid == new_idle){
+                        if (current->type == 1) {
+                                current->diskid = old_idle;
+                        } else {
+                                modify_read(ndisks, fd, new_idle, old_idle, current, subtrace);
+                        }
+                }
+                current = current->next;
+        }
+
 }
 
 static void handle_aio(sigval_t sigval)
@@ -251,22 +290,21 @@ static void handle_aio(sigval_t sigval)
 	free(cb);
 }
 
-int submit_trace(int *fd, int *real_fd, void *buf, struct trace_info *subtrace, 
+int submit_trace(void *buf, int *sst, int new_idle, struct trace_info *subtrace, 
                 struct trace_info *trace, long long initTime)
 {
         struct req_info *req;
-        int i,j;
+        struct req_info *tmp;
+        int i, j, stripe_id, chunk_size;
         req = (struct req_info *)malloc(sizeof(struct req_info));
+        chunk_size = CHUNK_SIZE * 1024;
         printf("submitting reqs: diskid, lba, type, size\n");
         while (subtrace->rear) {
                 queue_pop(0, subtrace, req);
-                if (ROTATE == 1) {
-                        /* check if we read from idle device */
-                        
-                }
-                printf("%d, %lld, %d, %d\n", 
-                                req->diskid, req->lba, req->type, req->size);
-                submit_aio(fd[req->diskid], buf, req, trace, initTime);
+                stripe_id = req->lba / chunk_size;
+                sst[stripe_id] = new_idle;
+                printf("%d, %lld, %d, %d\n", req->diskid, req->lba, req->type, req->size);
+                submit_aio(req->diskid, buf, req, trace, initTime);
         }
 
         free(req);
@@ -457,7 +495,7 @@ int check_mode(int *op, int diskNum)
         return mode;
 }
 
-void preread(int mode, int *op, struct req_info *parent, unsigned long long lba, 
+void preread(int *real_fd, int mode, int *op, struct req_info *parent, unsigned long long lba, 
                 int diskNum, struct trace_info *subtrace)
 {
         int i;
@@ -485,7 +523,7 @@ void preread(int mode, int *op, struct req_info *parent, unsigned long long lba,
         if (mode == 1) {
                 for (i = 0; i < diskNum; i++) {
                         if (op[i] != 1) {
-                                tmp->diskid = i;
+                                tmp->diskid = real_fd[i];
                                 queue_push(subtrace, tmp);
                                 parent->waitChild += 1;
                         }
@@ -494,7 +532,7 @@ void preread(int mode, int *op, struct req_info *parent, unsigned long long lba,
         else if (mode == 0) {
                 for (i=0; i < diskNum; i++) {
                         if (op[i] != 0) {
-                                tmp->diskid = i;
+                                tmp->diskid = real_fd[i];
                                 queue_push(subtrace, tmp);
                                 parent->waitChild += 1;
                         }
@@ -504,11 +542,11 @@ void preread(int mode, int *op, struct req_info *parent, unsigned long long lba,
         free(tmp);
 }
 
-void split_req(int *sst, int idle_device, struct req_info *req, int diskNum, struct trace_info *subtrace)
+void split_req(int *fd, int *sst, int idle_device, struct req_info *req, int diskNum, struct trace_info *subtrace)
 {
         unsigned int chunk_size = CHUNK_SIZE * 1024;
         unsigned int stripe_size = chunk_size * (diskNum - 1);
-        int i, len;
+        int i, j, len, old_idle;
         long long req_end;
         unsigned long stripe_id;
         unsigned int data_id;
@@ -518,7 +556,7 @@ void split_req(int *sst, int idle_device, struct req_info *req, int diskNum, str
         unsigned long long lba;
         unsigned long long slice;
         int op[MAX_DISKS] = {0};
-        int mode;
+        int mode, real_fd[10];
         
         struct req_info *parity_req = (struct req_info *)malloc(sizeof(struct req_info));
         struct req_info *sub_req = (struct req_info *)malloc(sizeof(struct req_info));
@@ -554,18 +592,29 @@ void split_req(int *sst, int idle_device, struct req_info *req, int diskNum, str
                 if (stripe_id != slice / stripe_size) {
 
                         /* New stripe
-                         * pre read for old strip and push them in stack 
+                         * pre read old strip and push them in stack 
                          * */
+
                         if (parent->type == 1) {
                                 mode = check_mode(op, diskNum);
-                                preread(mode, op, parent, lba, diskNum, subtrace);
+                                preread(real_fd, mode, op, parent, lba, diskNum, subtrace);
                         }
+
+                        memset(real_fd, 0, sizeof(real_fd));
 
                         memset(op, 0 , sizeof(op)); /* reset op for new stripe */
                         
                         stripe_id = slice / stripe_size;
                         parity_id = stripe_id % diskNum;
                         lba = (long long) (stripe_id * stripe_size) + chunk_offset;
+
+                        /* check originl disk sets for the stripe */
+                        j = 0;
+                        old_idle = sst[stripe_id];
+                        for (i = 0; i < diskNum + 1; i++) {
+                                if (fd[i] != old_idle)
+                                        real_fd[j++] = fd[i];
+                        }
                         
                         if (DEBUG) {
                                 printf("stripe id = %ld\n", stripe_id);
@@ -573,7 +622,6 @@ void split_req(int *sst, int idle_device, struct req_info *req, int diskNum, str
                         }
                         
                         if (parent->type == 1) {
-                                sst[stripe_id] = idle_device;
                                 parity_req->time = parent->time;
                                 parity_req->lba = lba;
                                 parity_req->size = len;
@@ -582,7 +630,7 @@ void split_req(int *sst, int idle_device, struct req_info *req, int diskNum, str
                                 parity_req->parent = parent;
                                 parity_req->waitChild = 0;
                                 op[parity_id] = 1;
-                                parity_req->diskid = parity_id;
+                                parity_req->diskid = real_fd[parity_id];
                                 queue_push(subtrace, parity_req);
                                 parent->waitChild += 1;
                         }
@@ -610,19 +658,15 @@ void split_req(int *sst, int idle_device, struct req_info *req, int diskNum, str
                         op[disk_id] = 1;
                 else
                         op[disk_id] = 2;
-                sub_req->diskid = disk_id;
                 queue_push(subtrace, sub_req);
-
                 parent->waitChild += 1;
-
-                printf("disk id = %d, lba = %lld\n", disk_id, lba);
-
+                printf("disk id = %d, open id = %d, lba = %lld\n", disk_id, sub_req->diskid, lba);
         }
         
         /* finish spliting: pre-read before write */
         if (parent->type == 1) { 
                 mode = check_mode(op, diskNum);
-                preread(mode, op, parent, lba, diskNum, subtrace);
+                preread(real_fd, mode, op, parent, lba, diskNum, subtrace);
         }
         
         free(parity_req);
