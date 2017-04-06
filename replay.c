@@ -208,10 +208,11 @@ void modify_read(int ndisks, int *fd, int new_idle, int old_idle, struct req_inf
         struct req_info *req;
 
         req = (struct req_info *)malloc(sizeof(struct req_info));
-        for (i = 0; i < ndisks; i++){
-                if (fd[i] != new_idle && fd[i] != old_idle) {
+        for (i = 0; i < ndisks + 1; i++){
+                if (i != new_idle && i != old_idle) {
                         if (add == 0) {
                                 current->diskid = fd[i];
+                                add = 1;
                         } else {
                                copy_req(current, req);
                                req->diskid = fd[i];
@@ -238,11 +239,11 @@ void check_trace(int *sst, int ndisks, int new_idle, int *fd, struct trace_info 
         current = subtrace->front;
         while(current) {
                 stripe_id = current->lba / chunk_size;
-                old_idle = fd[sst[stripe_id]];
-                printf("Writing to %d, idle is %d\n", current->diskid, fd[new_idle]);
+                old_idle = sst[stripe_id];
                 if (current->diskid == fd[new_idle]) {
                         if (current->type == 1) {
-                                current->diskid = old_idle;
+                                current->diskid = fd[old_idle];
+                                sst[stripe_id] = new_idle;
                         } else {
                                 modify_read(ndisks, fd, new_idle, old_idle, current, subtrace);
                         }
@@ -655,7 +656,6 @@ void split_req(int *fd, int *sst, struct req_info *req, int diskNum, struct trac
                                 }
                         }
                         printf("\n");
-
                         
                         if (DEBUG) {
                                 printf("stripe id = %ld\n", stripe_id);
