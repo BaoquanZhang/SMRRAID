@@ -1,18 +1,17 @@
 import sys
 from random import randint
 
-filename = sys.argv[1]
-total_size = int(sys.argv[2]) * 1024 * 1024
-sq_lba = 256 * 1024 * 1024 * 2000
+total_size = int(sys.argv[1]) * 1024 * 1024 * 1024
+filename = sys.argv[2]
 line_count = 0
 timestamp = 0
 upper = (64 + 1024) * 256 * 1024 * 1024
 low = 64 * 256 * 1024 * 1024
-
-with open(filename, "w") as trace_f:
+read_lba = 0
+with open(filename, "w+") as trace_f:
 
     while total_size > 0 :
-        size = 2048
+        size = 1024
         lba = randint(low, upper)
         timestep = randint(50, 200)
 
@@ -24,24 +23,14 @@ with open(filename, "w") as trace_f:
 
         timestamp +=timestep
         trace_f.write(str(timestamp) + " " + str(lba/512) + " " + str(size) + " 1\n")
+        if read_lba == 0:
+            read_lba = lba;
         line_count += 1
  
-        if line_count == 4:
+        if line_count == 2 or line_count == 4:
             timestep = randint(10, 50)
             timestamp += timestep
-            trace_f.write(str(timestamp) + " " + str(lba/512) + " " + str(size) + " 0\n")
-            line_count += 1
-        
-        if line_count == 6:
-            timestep = randint(10, 50)
-            timestamp += timestep
-            trace_f.write(str(timestamp) + " " + str(sq_lba/512) + " " + str(size) + " 1\n")
-            line_count += 1
-        
-        if line_count == 8:
-            timestep = randint(10, 50)
-            timestamp += timestep
-            trace_f.write(str(timestamp) + " " + str(sq_lba/512) + " " + str(size) + " 0\n")
+            trace_f.write(str(timestamp) + " " + str(read_lba/512) + " " + str(size) + " 0\n")
             line_count += 1
         
         line_count = line_count % 10

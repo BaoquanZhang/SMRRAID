@@ -1,0 +1,6 @@
+reset 
+set terminal postscript eps color enhanced size 5,2
+set xlabel 'time (s)'
+set ylabel 'latencies (ms)'
+set output '30G_i8_e4.eps'
+plot 'log/30G_sdc.txt' using ($1/1000/1000):($7/1000) title "no control"

@@ -1,0 +1,6 @@
+reset 
+set terminal postscript eps color enhanced size 5,2
+set xlabel 'time (s)'
+set ylabel 'latencies (s)'
+set output '200GB_512KB_8W2R.eps'
+plot 'log/200GB_512KB_8W2R.log' using ($1/1000/1000):($7/1000/1000) title "no control"

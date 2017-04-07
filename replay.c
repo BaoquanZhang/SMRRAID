@@ -1,6 +1,6 @@
 #include "replay.h"
 
-#define DEBUG 1
+#define DEBUG 0
 
 
 void main(int argc, char *argv[])
@@ -180,10 +180,15 @@ int submit_trace(int *fd, void *buf, struct trace_info *subtrace, struct trace_i
 {
         struct req_info *req;
         req = (struct req_info *)malloc(sizeof(struct req_info));
-        printf("submitting reqs: diskid, lba, type, size\n");
+        
+        if (DEBUG)
+                printf("submitting reqs: diskid, lba, type, size\n");
+        
         while (subtrace->rear) {
                 queue_pop(0, subtrace, req);
-                printf("%d, %lld, %d, %d\n", 
+                
+                if (DEBUG)
+                        printf("%d, %lld, %d, %d\n", 
                                 req->diskid, req->lba, req->type, req->size);
                 submit_aio(fd[req->diskid], buf, req, trace, initTime);
         }
@@ -448,7 +453,8 @@ void split_req(struct req_info *req, int diskNum, struct trace_info *subtrace)
                 else if (slice + chunk_size > req_end)
                         len = req_end - slice;
 
-                printf("len = %d\n", len);
+                if (DEBUG)
+                        printf("len = %d\n", len);
 
                 if (len <= 0)
                         break;
@@ -511,7 +517,8 @@ void split_req(struct req_info *req, int diskNum, struct trace_info *subtrace)
 
                 parent->waitChild += 1;
 
-                printf("disk id = %d, lba = %lld\n", disk_id, lba);
+                if (DEBUG)
+                        printf("disk id = %d, lba = %lld\n", disk_id, lba);
 
         }
         
