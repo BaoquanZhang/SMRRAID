@@ -1,6 +1,6 @@
 #include "replay.h"
 
-#define DEBUG 1
+#define DEBUG 0
 #define ROTATE 1
 
 void main(int argc, char *argv[])
@@ -216,6 +216,7 @@ void modify_read(int ndisks, int *fd, int new_idle, int old_idle, struct req_inf
                         } else {
                                copy_req(current, req);
                                req->diskid = fd[i];
+                               req->parent->waitChild += 1;
                                queue_push(subtrace, req);
                         }
                 }
@@ -330,12 +331,13 @@ int submit_trace(void *buf, int *sst, int new_idle, struct trace_info *subtrace,
         int i, j, stripe_id, chunk_size;
         req = (struct req_info *)malloc(sizeof(struct req_info));
         chunk_size = CHUNK_SIZE * 1024;
-        printf("submitting reqs: diskid, lba, type, size\n");
+
+        //printf("submitting reqs: diskid, lba, type, size\n");
         while (subtrace->rear) {
                 queue_pop(0, subtrace, req);
                 stripe_id = req->lba / chunk_size;
                 sst[stripe_id] = new_idle;
-                printf("%d, %lld, %d, %d\n", req->diskid, req->lba, req->type, req->size);
+                //printf("%d, %lld, %d, %d\n", req->diskid, req->lba, req->type, req->size);
                 submit_aio(req->diskid, buf, req, trace, initTime);
         }
 
@@ -614,7 +616,7 @@ void split_req(int *fd, int *sst, struct req_info *req, int diskNum, struct trac
                 else if (slice + chunk_size > req_end)
                         len = req_end - slice;
 
-                printf("len = %d\n", len);
+                //printf("len = %d\n", len);
 
                 if (len <= 0)
                         break;
@@ -645,17 +647,17 @@ void split_req(int *fd, int *sst, struct req_info *req, int diskNum, struct trac
                         j = 0;
                         old_idle = sst[stripe_id];
 
-                        printf("old idle device: %d\n", old_idle);
+                        //printf("old idle device: %d\n", old_idle);
                         
-                        printf("spliting: old disk set: ");
+                        //printf("spliting: old disk set: ");
                         for (i = 0; i < diskNum + 1; i++) {
                                 if (i != old_idle) {
                                         real_fd[j] = fd[i];
-                                        printf("%d ", real_fd[j]);
+                          //              printf("%d ", real_fd[j]);
                                         j++;
                                 }
                         }
-                        printf("\n");
+                        //printf("\n");
                         
                         if (DEBUG) {
                                 printf("stripe id = %ld\n", stripe_id);
@@ -702,7 +704,7 @@ void split_req(int *fd, int *sst, struct req_info *req, int diskNum, struct trac
                         op[disk_id] = 2;
                 queue_push(subtrace, sub_req);
                 parent->waitChild += 1;
-                printf("disk id = %d, open id = %d, lba = %lld\n", disk_id, sub_req->diskid, lba);
+                //printf("disk id = %d, open id = %d, lba = %lld\n", disk_id, sub_req->diskid, lba);
         }
         
         /* finish spliting: pre-read before write */
