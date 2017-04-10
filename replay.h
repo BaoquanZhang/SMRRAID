@@ -22,8 +22,8 @@
 #define BUFSIZE	300
 #define RAMSIZE 60 //MB
 
-#define MEM_ALIGN		        512  // Memory alignment
-#define USE_GLOBAL_BUFF		    0 
+#define MEM_ALIGN 512  // Memory alignment
+#define USE_GLOBAL_BUFF 0 
 #define AIO_THREAD_POOL_SIZE    50
 
 #define BYTE_PER_BLOCK		    512     //blk size (bits) 
