@@ -319,6 +319,8 @@ static void handle_aio(sigval_t sigval)
         }
 
         free(sub_req);
+        if (USE_GLOBAL_BUFF == 0)
+                free((void *) cb->aiocb->aio_buf);
 	free(cb->aiocb);
 	free(cb);
 }

@@ -2,17 +2,17 @@ import sys
 from random import randint
 
 filename = sys.argv[1]
-total_size = int(sys.argv[2]) * 1024 * 1024
+total_size = int(sys.argv[2]) * 1024 * 1024 * 1024
 sq_lba = 256 * 1024 * 1024 * 2000
 line_count = 0
 timestamp = 0
-upper = (64 + 1024) * 256 * 1024 * 1024
-low = 64 * 256 * 1024 * 1024
+upper = (64 * 4 + 1024) * 256 * 1024 * 1024
+low = 64 * 4 * 256 * 1024 * 1024
+size = 1024 * 4
 
 with open(filename, "w") as trace_f:
 
     while total_size > 0 :
-        size = 2048
         lba = randint(low, upper)
         timestep = randint(50, 200)
 
