@@ -8,7 +8,7 @@ line_count = 0
 timestamp = 0
 upper = (64 * 4 + 1024) * 256 * 1024 * 1024
 low = 64 * 4 * 256 * 1024 * 1024
-size = 1024 * 4
+size = 1024 * 3
 
 with open(filename, "w") as trace_f:
 
