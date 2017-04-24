@@ -16,7 +16,7 @@ with open(filename, "w") as trace_f:
 
     while total_size > 0 :
         lba = randint(low, upper)
-        timestep = randint(50, 200)
+        timestep = randint(50, 100)
 
         if total_size - size * 512 < 0:
             break
@@ -29,13 +29,14 @@ with open(filename, "w") as trace_f:
         line_count += 1
  
         if line_count == 1:
-            timestep = randint(50, 200)
+            timestep = randint(50, 100)
             timestamp += timestep
             trace_f.write(str(timestamp) + " " + str(rd_lba/512) + " " + str(size) + " 0\n")
-            timestep = randint(50, 200)
-            timestamp += timestep
+            lba = randint(low, upper)
+            timestep = randint(50, 100)
+            lba = randint(low, upper)
             trace_f.write(str(timestamp) + " " + str(lba/512) + " " + str(size) + " 0\n")
-            #timestep = randint(50, 200)
+            #timestep = randint(50, 100)
             #timestamp += timestep
             #trace_f.write(str(timestamp) + " " + str(rd_lba/512) + " " + str(size) + " 0\n")
             line_count += 1
