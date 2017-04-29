@@ -30,7 +30,7 @@
 #define LARGEST_REQUEST_SIZE	1024 * 2 * 3  //1MB Largest request size (blks)
 #define BLOCK_PER_DRIVE		    (long long)8*1024*1024*1024*2	//8TB Drive capacity (blks)
 
-#define CHUNK_SIZE 512 //raid: chunk size kb
+#define CHUNK_SIZE 128 //raid: chunk size kb
 #define MAX_DISKS 10
 
 struct config_info {
