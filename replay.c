@@ -29,7 +29,7 @@ void main(int argc, char *argv[])
 	printf("starting replay IO trace %s----\n",config->traceFileName);
         
         for (j = 0; j < config->diskNum; j++) {
-                fd[j] = open(config->device[j], O_DIRECT | O_SYNC | O_RDWR); 
+                fd[j] = open(config->device[j], O_DIRECT | /*O_SYNC |*/ O_RDWR); 
                 if (fd[j] < 0) {
                         fprintf(stderr, "Value of errno: %d\n", errno);
                         printf("Cannot open %d\n", j);
