@@ -3,4 +3,4 @@
 /home/bzhang/tests/libzbc/zbc_reset_write_ptr /dev/sdd -1
 /home/bzhang/tests/libzbc/zbc_reset_write_ptr /dev/sde -1
 /home/bzhang/tests/libzbc/zbc_reset_write_ptr /dev/sdf -1
-./replay config/proj0_trace.ini
+./replay config/src22_trace.ini
