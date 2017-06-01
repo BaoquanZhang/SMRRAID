@@ -35,8 +35,8 @@
 
 struct config_info {
 	char device[10][64];
-	char traceFileName[64];
-	char logFileName[64];
+	char traceFileName[1024];
+	char logFileName[1024];
         unsigned int exec;
         unsigned int idle;
         unsigned int diskNum;
