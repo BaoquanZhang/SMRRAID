@@ -3,4 +3,5 @@
 /home/bzhang/tests/libzbc/zbc_reset_write_ptr /dev/sdd -1
 /home/bzhang/tests/libzbc/zbc_reset_write_ptr /dev/sde -1
 /home/bzhang/tests/libzbc/zbc_reset_write_ptr /dev/sdf -1
-./replay config/scal/200GB_1_5MB_8W2R_4disks.ini
+/home/bzhang/tests/libzbc/zbc_reset_write_ptr /dev/sdg -1
+./replay config/scal/200GB_2_5MB_8W2R_6disks.ini
