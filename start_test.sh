@@ -5,4 +5,4 @@
 /home/bzhang/tests/libzbc/zbc_reset_write_ptr /dev/sdf -1
 /home/bzhang/tests/libzbc/zbc_reset_write_ptr /dev/sdg -1
 /home/bzhang/tests/libzbc/zbc_reset_write_ptr /dev/sdh -1
-./replay config/slowtier/50ms_80/50ms_80.ini
+./replay config/slowtier/100ms_80/100ms_80.ini
