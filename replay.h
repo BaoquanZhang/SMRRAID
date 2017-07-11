@@ -32,8 +32,11 @@
 #define LARGEST_REQUEST_SIZE 1024 * 2 * 3  //1MB Largest request size (blks)
 #define BLOCK_PER_DRIVE (long long) 8 * 1024 * 1024 * 1024 * 2	//8TB Drive capacity (blks)
 
-#define CHUNK_SIZE 512 //raid: chunk size kb
+#define CHUNK_SIZE 4 //raid: chunk size kb
 #define MAX_DISKS 10
+/* metadata updates */
+#define META_OFFSET 1073741824
+#define META_SIZE 512
 
 /* macros for stripe state table */
 #define SST_SIZE 1000000 /* size of stripe state table */
@@ -52,8 +55,8 @@ struct config_info {
 
 struct req_info {
 	double time;
-	long long lba;
-	unsigned int size;
+	long long lba; // byte
+	unsigned int size; // byte
 	unsigned int type;
         long long waitTime;
 	struct req_info *next;
@@ -93,13 +96,13 @@ static void handle_aio(sigval_t sigval);
 static void submit_aio(int fd, void *buf, struct req_info *req, struct trace_info *trace, long long initTime);
 static void init_aio();
 //raid ops
-void split_req(int *fd, int *sst, struct req_info *parent, int diskNum, struct trace_info *subtrace);
+void split_req(int *fd, unsigned short *sst, struct req_info *parent, int diskNum, struct trace_info *subtrace);
 void preread(int *real_fd, int mode, int *op, struct req_info *parent, 
                 unsigned long long lba, int diskNum, struct trace_info *subtrace);
-int submit_trace(void *buf, int *sst, int idle_device, struct trace_info *subtrace, struct trace_info *trace, long long initTime);
+int submit_trace(void *buf, unsigned short *sst, int idle_device, struct trace_info *subtrace, struct trace_info *trace, long long initTime);
 void rotate_device(struct config_info *config, key_t key, pid_t child_pid);
 int check_mode(int *op, int diskNum);
-void check_trace(int *sst, int ndisks, int new_idle, int *fd, struct trace_info *subtrace);
+int  check_trace(unsigned short *sst, int ndisks, int new_idle, int *fd, struct trace_info *subtrace);
 //trace queue ops
 void queue_push(struct trace_info *trace, struct req_info *req);
 void queue_pop(int from_head, struct trace_info *trace, struct req_info *req);
