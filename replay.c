@@ -115,14 +115,14 @@ void replay(int *fd, struct config_info *config, key_t key, struct trace_info *t
 	int i,j, shmid, *shm;
 	long long initTime,nowTime,reqTime,waitTime;
         struct trace_info *subtrace;
-        struct req_info *meta_update;
+        //struct req_info *meta_update;
         int real_fd[10];
         int ndisks, modify_meta;
 	int idle_device;
         unsigned short sst[SST_SIZE];
 
         subtrace = (struct trace_info *) malloc(sizeof(struct trace_info));
-        meta_update = (struct req_info *) malloc(sizeof(struct req_info));
+        //meta_update = (struct req_info *) malloc(sizeof(struct req_info));
 
         if (DEBUG == 1) {
                 printf("Devices:\n");
@@ -163,7 +163,7 @@ void replay(int *fd, struct config_info *config, key_t key, struct trace_info *t
                 /* Initiate a sub request statck */
                 memset(subtrace, 0, sizeof(struct trace_info));
                 memset(real_fd, 0, sizeof(int) * 10);
-                memset(meta_update, 0, sizeof(struct req_info));
+                //memset(meta_update, 0, sizeof(struct req_info));
                 queue_pop(1, trace, req);
 		reqTime = req->time;
 		nowTime = time_elapsed(initTime);
@@ -187,6 +187,7 @@ void replay(int *fd, struct config_info *config, key_t key, struct trace_info *t
                         modify_meta = check_trace(sst, ndisks, idle_device, fd, subtrace); 
                 }
                 // metadata updates
+                /*
                 if (req->type == 1 && modify_meta) {
                         meta_update->parent = req;
                         req->waitChild += 1;
@@ -197,6 +198,7 @@ void replay(int *fd, struct config_info *config, key_t key, struct trace_info *t
                         meta_update->type = req->type;
                         queue_push(subtrace, meta_update);
                 }
+                */
 
                 if(DEBUG)
                         queue_print(subtrace);
@@ -216,6 +218,7 @@ void replay(int *fd, struct config_info *config, key_t key, struct trace_info *t
 	fclose(trace->logFile);
 	free(trace);
 	free(req);
+        //free(meta_update);
 }
 
 void modify_read(int ndisks, int *fd, int new_idle, int old_idle, struct req_info * current,
