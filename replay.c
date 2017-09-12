@@ -1,6 +1,6 @@
 #include "replay.h"
 
-#define DEBUG 0
+#define DEBUG 1
 #define ROTATE 1
 
 void main(int argc, char *argv[])
@@ -98,7 +98,7 @@ void rotate_device(struct config_info *config, key_t key, pid_t child_pid)
                 pthread_mutex_lock(&mutex);
                 *shm = current_idle;
                 pthread_mutex_unlock(&mutex);
-                //printf("Current idle devce = %d\n", *shm);
+                printf("Current idle devce = %d\n", *shm);
                 res = waitpid(child_pid, &status, WNOHANG);
                 if (res == 0)
                         continue;
@@ -415,7 +415,7 @@ static void submit_aio(int fd, void *buf, struct req_info *req,struct trace_info
         cb->beginTime_issue = req->time+initTime; //latency from the req was issued 
 	
         cb->trace=trace;
-        
+
 	if (req->type == 1)
 		error = aio_write(cb->aiocb);
 	else
