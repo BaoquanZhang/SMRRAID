@@ -29,7 +29,7 @@ void main(int argc, char *argv[])
 	printf("starting replay IO trace %s----\n",config->traceFileName);
         
         for (j = 0; j < config->diskNum; j++) {
-                fd[j] = open(config->device[j], O_DIRECT | O_RDWR /*| O_SYNC*/ ); 
+                fd[j] = open(config->device[j], O_DIRECT | O_RDWR); 
                 if (fd[j] < 0) {
                         fprintf(stderr, "Value of errno: %d\n", errno);
                         printf("Cannot open %d\n", j);
@@ -98,7 +98,7 @@ void rotate_device(struct config_info *config, key_t key, pid_t child_pid)
                 pthread_mutex_lock(&mutex);
                 *shm = current_idle;
                 pthread_mutex_unlock(&mutex);
-                printf("Current idle devce = %d\n", *shm);
+                //printf("Current idle devce = %d\n", *shm);
                 res = waitpid(child_pid, &status, WNOHANG);
                 if (res == 0)
                         continue;
