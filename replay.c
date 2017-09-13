@@ -1,6 +1,6 @@
 #include "replay.h"
 
-#define DEBUG 1
+#define DEBUG 0
 #define ROTATE 1
 
 void main(int argc, char *argv[])
@@ -29,7 +29,7 @@ void main(int argc, char *argv[])
 	printf("starting replay IO trace %s----\n",config->traceFileName);
         
         for (j = 0; j < config->diskNum; j++) {
-                fd[j] = open(config->device[j], O_DIRECT | O_RDWR); 
+                fd[j] = open(config->device[j], O_DIRECT | O_RDWR ); 
                 if (fd[j] < 0) {
                         fprintf(stderr, "Value of errno: %d\n", errno);
                         printf("Cannot open %d\n", j);
@@ -95,10 +95,10 @@ void rotate_device(struct config_info *config, key_t key, pid_t child_pid)
                 sleep(itval);
                 current_idle += 1;
                 current_idle %= config->diskNum;
-                pthread_mutex_lock(&mutex);
+                //pthread_mutex_lock(&mutex);
                 *shm = current_idle;
-                pthread_mutex_unlock(&mutex);
-                printf("Current idle devce = %d\n", *shm);
+                //pthread_mutex_unlock(&mutex);
+                //printf("Current idle devce = %d\n", *shm);
                 res = waitpid(child_pid, &status, WNOHANG);
                 if (res == 0)
                         continue;
@@ -181,9 +181,9 @@ void replay(int *fd, struct config_info *config, key_t key, struct trace_info *t
 
                 if (ROTATE == 1) {
                         /* check if read from or write to idle device */
-                        pthread_mutex_lock(&mutex);
+                        //pthread_mutex_lock(&mutex);
                         idle_device = *shm;
-                        pthread_mutex_unlock(&mutex);
+                        //pthread_mutex_unlock(&mutex);
                         modify_meta = check_trace(sst, ndisks, idle_device, fd, subtrace); 
                 }
                 // metadata updates
